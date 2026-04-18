@@ -1,33 +1,23 @@
 import { Component, ReactNode } from 'react'
-import * as Sentry from '@sentry/react'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
 import { logger } from '../lib/logger'
 
 interface Props  { children: ReactNode }
-interface State  { hasError: boolean; eventId: string | null }
+interface State  { hasError: boolean; error: Error | null }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, eventId: null }
+  state: State = { hasError: false, error: null }
 
-  static getDerivedStateFromError(): Partial<State> {
-    return { hasError: true }
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
-    // Sentry + structured log في نفس الوقت
-    const eventId = Sentry.captureException(error, { extra: { componentStack: info.componentStack } })
-    this.setState({ eventId })
-    logger.error('ui_crash', { error, componentStack: info.componentStack, sentryEventId: eventId })
+    logger.error('ui_crash', { message: error.message, componentStack: info.componentStack })
   }
 
   handleReload = () => window.location.reload()
   handleHome   = () => { window.location.href = '/dashboard' }
-
-  handleReport = () => {
-    if (this.state.eventId) {
-      Sentry.showReportDialog({ eventId: this.state.eventId })
-    }
-  }
 
   render() {
     if (!this.state.hasError) return this.props.children
@@ -44,13 +34,11 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="w-8 h-8" />
             </div>
             <h1 className="text-xl font-black text-slate-800 mb-2">حدث خطأ غير متوقع</h1>
-            <p className="text-slate-500 text-sm">
-              حدث عطل في هذا الجزء من التطبيق. تم تسجيل المشكلة تلقائياً.
-            </p>
-            {this.state.eventId && (
-              <p className="mt-2 text-xs text-slate-400 font-mono">
-                ID: {this.state.eventId.slice(0, 8)}
-              </p>
+            <p className="text-slate-500 text-sm">حدث عطل في هذا الجزء من التطبيق.</p>
+            {import.meta.env.DEV && this.state.error && (
+              <pre className="mt-4 text-xs text-red-700 bg-red-100 rounded-xl p-3 text-left overflow-auto max-h-32 dir-ltr">
+                {this.state.error.message}
+              </pre>
             )}
           </div>
           <div className="p-6 space-y-2">
@@ -66,14 +54,6 @@ export class ErrorBoundary extends Component<Props, State> {
             >
               <Home className="w-4 h-4" /> لوحة التحكم
             </button>
-            {this.state.eventId && (
-              <button
-                onClick={this.handleReport}
-                className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                الإبلاغ عن المشكلة
-              </button>
-            )}
           </div>
         </div>
       </div>
