@@ -1,27 +1,22 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
+import React from 'react'
+import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
-import { ThemeProvider } from './context/ThemeContext.tsx'
-import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import './index.css'
 
-// Sentry: تحميل اختياري — لن يؤثر على بدء التطبيق أبداً
-if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
-  import('@sentry/react').then((Sentry) => {
-    Sentry.init({
-      dsn:              import.meta.env.VITE_SENTRY_DSN,
-      environment:      import.meta.env.MODE,
-      tracesSampleRate: 0.1,
-    })
-  }).catch(() => { /* Sentry غير متاح — لا مشكلة */ })
-}
+// تسجيل أخطاء عالمية للتشخيص
+window.addEventListener('error', (e) => {
+  console.error('💥 Global Error:', e.message, 'at', e.filename + ':' + e.lineno)
+})
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    </ErrorBoundary>
-  </StrictMode>,
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('💥 Unhandled Promise:', e.reason)
+})
+
+console.log('🚀 App starting...')
+console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL ? '✓ Loaded' : '✗ Missing')
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
 )
