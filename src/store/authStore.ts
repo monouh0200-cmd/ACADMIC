@@ -3,32 +3,36 @@ import { supabase } from '../lib/supabase'
 
 export const useAuthStore = create((set) => ({
   user: null,
-  profile: null, // تهيئة بـ null لتجنب undefined
+  profile: null,
   isLoading: true,
   error: null,
+
+  clearStore: () => set({ user: null, profile: null, error: null, isLoading: false }),
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null })
     try {
+      await supabase.auth.signOut()
+      
       const { data, error: authErr } = await supabase.auth.signInWithPassword({ email, password })
       if (authErr) throw authErr
 
       const { data: rows, error: profileErr } = await supabase
         .from('profiles')
-        .select('id, username, role, status, specialization, subscription_type, subscription_expires_at')
+        .select('*')
         .eq('id', data.user.id)
-        .limit(1)
+        .maybeSingle()
 
-      const profile = rows?.[0] || null
+      if (profileErr) throw profileErr
+      const profile = rows ?? null
 
       if (!profile || profile.status !== 'approved') {
         await supabase.auth.signOut()
-        set({ isLoading: false })
-        return { success: false, message: profile?.status === 'pending' ? 'حسابك قيد المراجعة' : 'الرجاء تفعيل الحساب' }
+        return { success: false, message: profile ? 'حسابك قيد المراجعة' : 'الرجاء تفعيل الحساب' }
       }
 
       set({ user: data.user, profile, isLoading: false })
-      return { success: true, message: '✅ تم تسجيل الدخول' }
+      return { success: true, message: '✅ تم تسجيل الدخول بنجاح' }
     } catch (err: any) {
       set({ isLoading: false, error: err.message })
       return { success: false, message: err.message }
@@ -41,25 +45,45 @@ export const useAuthStore = create((set) => ({
   },
 
   checkSession: async () => {
-    set({ isLoading: true })
     try {
-      const {  { session }, error: sessionErr } = await supabase.auth.getSession()
+      set({ isLoading: true })
+      const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
       
       if (sessionErr || !session) {
         set({ user: null, profile: null, isLoading: false })
         return
       }
 
-      const {  rows } = await supabase
+      const { data: profile, error: profileErr } = await supabase
         .from('profiles')
-        .select('id, username, role, status, specialization, subscription_type, subscription_expires_at')
+        .select('*')
         .eq('id', session.user.id)
-        .limit(1)
+        .maybeSingle()
 
-      const profile = rows?.[0] || null
-      set({ user: session.user, profile, isLoading: false })
+      if (profileErr || !profile) {
+        await supabase.auth.signOut()
+        set({ user: null, profile: null, isLoading: false })
+        return
+      }
+
+      // ✅ تحديث الاشتراك محلياً فقط — الـ DB trigger يتولى التحديث الفعلي
+      // (لا نستدعي .update() من العميل لأن الـ trigger يمنعه)
+      let currentProfile = profile
+      if (
+        profile.subscription_expires_at &&
+        new Date(profile.subscription_expires_at) < new Date() &&
+        profile.subscription_type === 'premium'
+      ) {
+        currentProfile = {
+          ...profile,
+          subscription_type: 'free',
+          payment_coupon: null,
+          subscription_expires_at: null,
+        }
+      }
+
+      set({ user: session.user, profile: currentProfile, isLoading: false })
     } catch (e) {
-      console.error('Session check failed:', e)
       set({ user: null, profile: null, isLoading: false })
     }
   }
